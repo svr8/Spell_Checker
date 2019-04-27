@@ -29,7 +29,9 @@ bool is_valid_char(char c) {
 long int calc_filesize(FILE* f) {
   FILE* ff = f;
   fseek(ff, 0L, SEEK_END);
-  return ftell(ff);
+  long int size = ftell(ff);
+  fclose(ff);
+  return size;
 }
 FILE* file_read_mode(char* name) {
   FILE* f = fopen(name, "r");
@@ -43,6 +45,7 @@ FILE* file_read_mode(char* name) {
 
 //----------------------------------------
 // DICTIONARY
+
 typedef struct TrieNode { 
   char c;
   bool isEnd;
@@ -58,13 +61,33 @@ Node* create_node(char c) {
   return n;
 }
 
+/*
+  [0 25]  : A-Z
+  [26-51] : a-z
+  [52]    : '
+*/
+
 int get_trie_index(char c) {
   if(65<=c && c<=90)
     return c-65;
   else if(c==39)
     return 52;
+  else if(97<=c && c<=122)
+    return c-97+26;
+  else {
+    return 0;
+  }
+}
+
+char get_trie_char(int index) {
+  if(0<=index && index<=25)
+    return (char) (index+65);
+  else if(26<=index && index<=51)
+    return (char) (index+71);
+  else if(index==51)
+    return (char) 39;
   else
-    return c-90;
+    return 0;
 }
 
 bool is_next(Node* parent, char c) {
@@ -127,6 +150,63 @@ bool is_correct_word(char* word, int len) {
   return false;
 }
 
+int dfs_word_end(char** prediction_list, char* prefix, int prefix_len, Node* cur, int cur_count, int predict_count) {
+  if(cur->isEnd) {
+    int index;
+    for(index=0;index<prefix_len;index++)
+      prediction_list[cur_count][index] = prefix[index];
+    cur_count++;
+    
+    if(cur_count == predict_count)
+      return cur_count;
+  } else if(prefix_len == 20) {
+    return cur_count;
+  }
+  
+  int i;
+  char c;
+  int count;
+
+  for(i = 0; i<DISTINCT_LETTER_COUNT; i++ ) {
+    c = get_trie_char(i);
+    if( is_next(cur, c) ) {
+      prefix[prefix_len] = c;
+      prefix_len++;
+      cur_count = dfs_word_end(prediction_list, prefix, prefix_len, cur->next[i], cur_count, predict_count);
+      if(cur_count == predict_count)
+        return cur_count;     
+
+      prefix[prefix_len] = 0;
+      prefix_len--;
+    }
+  }
+
+  return cur_count;
+}
+
+char** predict_word(char* word, int len, int predict_count) {
+  Node* cur = root;
+  int i, j, index;
+  char* new_word = calloc(20, sizeof(char));
+
+  for(i=0;i<len;i++) {
+    if(is_next(cur, word[i])) {
+      new_word[i] = word[i];
+      index = get_trie_index(word[i]);
+      cur = cur->next[index];
+    } else {
+      break;
+    }
+  }
+  len = i;
+
+  char** prediction_list = malloc(sizeof(char*) * predict_count);
+  for(i=0;i<predict_count;i++)
+    prediction_list[i] = calloc(20, sizeof(char));
+  dfs_word_end(prediction_list, new_word, len, cur, 0, predict_count);
+  return prediction_list; 
+}
+
 void init_dictionary(char* filename) {
   root = malloc( sizeof(Node) );
   char buff[20];
@@ -136,7 +216,6 @@ void init_dictionary(char* filename) {
   fptr = file_read_mode(filename);
   for(i=0;i<20;i++) buff[i] = 0;
   while( fscanf(fptr, "%s", buff)==1 ) {
-    // printf("%s %d\n", buff, len);
     len = str_len(buff);
     update_dictionary(buff, len);
     for(i=0;i<20;i++) buff[i] = 0;
@@ -225,8 +304,20 @@ file_segment** frag_file(char* file_name, int fragment_count) {
 //----------------------------------------
 // SPELL CHECKER
 void do_spell_check(char* word, int len, int line_number) {
-  if(!is_correct_word(word, len))
-      printf("Incorrect word at line %d: %s\n", line_number, word);
+  if(!is_correct_word(word, len)) {
+      char** prediction_list = predict_word(word, str_len(word), 10);
+      int i, j;
+      
+      printf("Incorrect word at line %d: %s\nPredictions: \n", line_number, word);
+      for(i=0;i<10 && prediction_list[i][0];i++) {
+        printf("%s\n", prediction_list[i]);
+      printf("\n");
+     
+      for(i=0;i<10;i++)
+        free(prediction_list[i]);
+      free(prediction_list);
+  }
+  }
 }
 
 void* parse_words(void* arg) {
@@ -284,7 +375,7 @@ void start_spell_checker(file_container* f_container) {
 int main() {
   char file_dictionary[] = "dict.txt";
   init_dictionary(file_dictionary);
-
+  
   char input_file[] = "input.txt";  
   long int size = calc_filesize(file_read_mode(input_file));
   int segment_count = min( (int) sqrt(size), 100);
@@ -292,6 +383,15 @@ int main() {
   file_container* f_container = create_file_container(fs_list, segment_count);
 
   start_spell_checker(f_container);
+  
+
+ /*
+  char word[] = "thei";
+  char** prediction_list = predict_word(word, str_len(word), 10);
+  int i;
+  for(i=0;i<10 && prediction_list[i][0];i++) {
+    printf("%s\n", prediction_list[i]);
+  }*/
 
   return 0;
 }
