@@ -185,6 +185,7 @@ int dfs_word_end(char** prediction_list, char* prefix, int prefix_len, Node* cur
 }
 
 char** predict_word(char* word, int len, int predict_count) {
+  printf(">%s %d\n", word, len);
   Node* cur = root;
   int i, j, index;
   char* new_word = calloc(20, sizeof(char));
@@ -304,9 +305,11 @@ file_segment** frag_file(char* file_name, int fragment_count) {
 //----------------------------------------
 // SPELL CHECKER
 void do_spell_check(char* word, int len, int line_number) {
+  // TODO: make this function synchronized
+  
   if(!is_correct_word(word, len)) {
       char** prediction_list = predict_word(word, str_len(word), 10);
-      int i, j;
+      int i;
       
       printf("Incorrect word at line %d: %s\nPredictions: \n", line_number, word);
       for(i=0;i<10 && prediction_list[i][0];i++) {
@@ -376,6 +379,7 @@ int main() {
   char file_dictionary[] = "dict.txt";
   init_dictionary(file_dictionary);
   
+  
   char input_file[] = "input.txt";  
   long int size = calc_filesize(file_read_mode(input_file));
   int segment_count = min( (int) sqrt(size), 100);
@@ -384,14 +388,14 @@ int main() {
 
   start_spell_checker(f_container);
   
-
- /*
+  
+  
   char word[] = "thei";
   char** prediction_list = predict_word(word, str_len(word), 10);
   int i;
   for(i=0;i<10 && prediction_list[i][0];i++) {
     printf("%s\n", prediction_list[i]);
-  }*/
+  }
 
   return 0;
 }
